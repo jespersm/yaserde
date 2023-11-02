@@ -191,6 +191,7 @@ pub enum Field {
   FieldOption { data_type: Box<Field> },
   FieldVec { data_type: Box<Field> },
   FieldStruct { struct_name: syn::Path },
+  FieldOwnedName,
 }
 
 impl Field {
@@ -221,6 +222,7 @@ impl From<&syn::Path> for Field {
         "Vec" => Some(Field::FieldVec {
           data_type: Box::new(Field::from(segment)),
         }),
+        "OwnedName" => Some(Field::FieldOwnedName),
         _ => None,
       }
     } else {
@@ -261,6 +263,7 @@ impl From<Field> for proc_macro2::TokenStream {
   fn from(field: Field) -> proc_macro2::TokenStream {
     match field {
       Field::FieldString => quote! { ::std::string::String },
+      Field::FieldOwnedName => quote! { ::xml::name::OwnedName },
       Field::FieldBool => quote! { bool },
       Field::FieldI8 => quote! { i8 },
       Field::FieldU8 => quote! { u8 },
@@ -281,6 +284,7 @@ impl From<&Field> for String {
   fn from(field: &Field) -> String {
     match field {
       Field::FieldString => "str".to_string(),
+      Field::FieldOwnedName => "str".to_string(),
       Field::FieldBool => "bool".to_string(),
       Field::FieldI8 => "i8".to_string(),
       Field::FieldU8 => "u8".to_string(),

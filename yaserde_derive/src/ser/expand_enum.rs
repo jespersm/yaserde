@@ -146,7 +146,9 @@ fn inner_enum_inspector(
                 | Field::FieldF32
                 | Field::FieldU64
                 | Field::FieldI64
-                | Field::FieldF64 => Some({
+                | Field::FieldF64
+                | Field::FieldOwnedName
+                => Some({
                   quote! {
                     match self {
                       &#name::#label { ref #field_label, .. } => {

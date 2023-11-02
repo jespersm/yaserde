@@ -63,6 +63,10 @@ pub fn parse(
     .fields
     .iter()
     .map(|field| YaSerdeField::new(field.clone()))
+    .filter(|field| match field.get_type() {
+        Field::FieldOwnedName => false,
+        Field::FieldOption { data_type: e} => match e.as_ref() { Field::FieldOwnedName => false, _ => true},
+        _ => true })
     .filter_map(|field| {
       let struct_visitor = |struct_name: syn::Path| {
         let struct_id: String = struct_name
@@ -125,12 +129,12 @@ pub fn parse(
         Field::FieldStruct { struct_name } => struct_visitor(struct_name),
         Field::FieldOption { data_type } => match *data_type {
           Field::FieldStruct { struct_name } => struct_visitor(struct_name),
-          Field::FieldOption { .. } | Field::FieldVec { .. } => None,
+          Field::FieldOption { .. } | Field::FieldVec { .. } | Field::FieldOwnedName => None,
           simple_type => simple_type_visitor(simple_type),
         },
         Field::FieldVec { data_type } => match *data_type {
           Field::FieldStruct { struct_name } => struct_visitor(struct_name),
-          Field::FieldOption { .. } | Field::FieldVec { .. } => None,
+          Field::FieldOption { .. } | Field::FieldVec { .. } | Field::FieldOwnedName => None,
           simple_type => simple_type_visitor(simple_type),
         },
         simple_type => simple_type_visitor(simple_type),
@@ -142,7 +146,7 @@ pub fn parse(
     .fields
     .iter()
     .map(|field| YaSerdeField::new(field.clone()))
-    .filter(|field| !field.is_attribute() || !field.is_flatten())
+    .filter(|field| !field.is_attribute() && !field.is_flatten())
     .filter_map(|field| {
       let value_label = field.get_value_label();
       let label_name = field.renamed_label_without_namespace();
@@ -249,6 +253,21 @@ pub fn parse(
         })
       };
 
+      let visit_owned_name = |action: TokenStream| {
+        Some(quote! {
+          for attr in attributes {
+            if attr.name.local_name == #label_name {
+              let qualified = xml::name::Name::from(attr.value.as_ref());
+              let value = xml::name::OwnedName::qualified(
+                qualified.local_name,
+                qualified.prefix.map(|p| namespace.get(p)).unwrap_or_default().unwrap_or("").to_string(),
+                qualified.prefix);
+              #label #action;
+            }
+          }
+        })
+      };
+
       let visit_struct = |struct_name: syn::Path, action: TokenStream| {
         visit(
           &action,
@@ -267,12 +286,14 @@ pub fn parse(
 
       let visit_sub = |sub_type: Box<Field>, action: TokenStream| match *sub_type {
         Field::FieldOption { .. } | Field::FieldVec { .. } => unimplemented!(),
+        Field::FieldOwnedName => visit_owned_name(action),
         Field::FieldStruct { struct_name } => visit_struct(struct_name, action),
         simple_type => visit_simple(simple_type, action),
       };
 
       match field.get_type() {
         Field::FieldString => visit_string(),
+        Field::FieldOwnedName => visit_owned_name(quote! { = value }),
         Field::FieldOption { data_type } => {
           visit_sub(data_type, quote! { = ::std::option::Option::Some(value) })
         }
@@ -307,6 +328,7 @@ pub fn parse(
           _ => None,
         },
         Field::FieldStruct { .. } | Field::FieldVec { .. } => None,
+        Field::FieldOwnedName => None,
         simple_type => {
           let type_token = TokenStream::from(simple_type);
           set_text(&quote! { #type_token::from_str(text_content).unwrap() })
@@ -368,7 +390,7 @@ pub fn parse(
             stringify!(#name), start_depth, event,
           );
           match event {
-            ::yaserde::__xml::reader::XmlEvent::StartElement{ref name, ref attributes, ..} => {
+            ::yaserde::__xml::reader::XmlEvent::StartElement{ref name, ref attributes, ref namespace} => {
               if depth == 0 && name.local_name == #root {
                 // Consume root element. We must do this first. In the case it shares a name with a child element, we don't
                 // want to prematurely match the child element below.

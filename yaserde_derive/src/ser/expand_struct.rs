@@ -25,6 +25,7 @@ pub fn serialize(
 
         match field.get_type() {
           Field::FieldString
+          | Field::FieldOwnedName
           | Field::FieldBool
           | Field::FieldI8
           | Field::FieldU8
@@ -42,7 +43,8 @@ pub fn serialize(
             }),
           ),
           Field::FieldOption { data_type } => match *data_type {
-            Field::FieldString => field.ser_wrap_default_attribute(
+            Field::FieldString |
+            Field::FieldOwnedName => field.ser_wrap_default_attribute(
               None,
               quote!({
                 if let ::std::option::Option::Some(ref value) = self.#label {
@@ -163,6 +165,7 @@ pub fn serialize(
 
       match field.get_type() {
         Field::FieldString
+        | Field::FieldOwnedName
         | Field::FieldBool
         | Field::FieldI8
         | Field::FieldU8
@@ -177,6 +180,7 @@ pub fn serialize(
 
         Field::FieldOption { data_type } => match *data_type {
           Field::FieldString
+          | Field::FieldOwnedName
           | Field::FieldBool
           | Field::FieldI8
           | Field::FieldU8
@@ -255,7 +259,8 @@ pub fn serialize(
           })
         }
         Field::FieldVec { data_type } => match *data_type {
-          Field::FieldString => {
+          Field::FieldString
+          | Field::FieldOwnedName => {
             let item_ident = Ident::new("yaserde_item", field.get_span());
             let inner = enclose_formatted_characters_for_value(&item_ident, label_name);
 
